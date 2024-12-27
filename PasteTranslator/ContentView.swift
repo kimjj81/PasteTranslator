@@ -66,10 +66,10 @@ struct ContentView: View {
                         } else {
                             TextEditor(text: $sourceText)
                                 .frame(minHeight: 200)
+                                .background(KeyPressHandler(key: "v", modifiers: [.command]) {
+                                    pasteFromClipboard()
+                                })
                         }
-                    }
-                    .onAppear {
-                        pasteFromClipboard()
                     }
                     .background(KeyPressHandler(key: "v", modifiers: [.command]) {
                         pasteFromClipboard()
