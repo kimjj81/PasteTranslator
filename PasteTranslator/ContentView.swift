@@ -30,26 +30,25 @@ struct ContentView: View {
     @Query private var items: [Item]
     @State private var sourceText: String = ""
     @State private var resultText: String = ""
-    @State private var sourceLanguage: String = "영어"
-    @State private var resultLanguage: String = "한국어"
+    @State private var sourceLanguage: String = "en"
+    @State private var resultLanguage: String = "ko"
     @State private var sourceImage: PlatformImage? = nil
     @State private var errorMessage: String? = nil
+    // Define a configuration.
+    @State private var configuration: TranslationSession.Configuration?
     
-    private var translationCancellable: AnyCancellable?
-    
-    let languages = ["영어", "일본어", "중국어", "한국어", "스페인어", "프랑스어"]
+    let languages = ["en", "ko", "ja", "es", "fr","zh"]
     
     var body: some View {
         VStack {
-            NavigationSplitView {
+//            NavigationSplitView {
                 VStack {
-                    Picker("소스 언어", selection: $sourceLanguage) {
+                    Picker("From", selection: $sourceLanguage) {
                         ForEach(languages, id: \.self) { language in
                             Text(language)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
-                    
                     ZStack {
                         if let image = sourceImage {
                             #if canImport(UIKit)
@@ -64,7 +63,7 @@ struct ContentView: View {
                                 .frame(minHeight: 200)
                             #endif
                         } else {
-                            TextEditor(text: $sourceText)
+                            TextView(text: sourceText)
                                 .frame(minHeight: 200)
                                 .background(KeyPressHandler(key: "v", modifiers: [.command]) {
                                     pasteFromClipboard()
@@ -76,52 +75,79 @@ struct ContentView: View {
                     })
                 }
                 .padding()
-                
                 VStack {
-                    Picker("결과 언어", selection: $resultLanguage) {
+                    Picker("To", selection: $resultLanguage) {
                         ForEach(languages, id: \.self) { language in
                             Text(language)
                         }
                     }
                     .pickerStyle(MenuPickerStyle())
-                    
                     TextView(text: resultText)
                         .frame(minHeight: 200)
                         .overlay(
                             RoundedRectangle(cornerRadius: 8)
                                 .stroke(Color.gray, lineWidth: 1)
                         )
-                        .translationTask(
-                            source: Locale.Language(identifier: languageCode(for: sourceLanguage)),
-                            target: Locale.Language(identifier: languageCode(for: resultLanguage))
-                        ) { session in
-                            Task { @MainActor in
-                                do {
-                                    let response = try await session.translate(sourceText)
-                                    resultText = response.targetText
-                                    errorMessage = nil
-                                } catch {
-                                    errorMessage = "Translation error: \(error.localizedDescription)"
-                                }
-                            }
-                        }
                 }
                 .padding()
-            } detail: {
-                Text("Select an item")
-            }
+//            } detail: {
+//                Text("Select an item")
+//            }
             
             Text(errorMessage ?? "No errors")
                 .foregroundColor(errorMessage != nil ? .red : .gray)
                 .padding()
+        }.translationTask(
+            source: Locale.Language(identifier: sourceLanguage),
+            target: Locale.Language(identifier: resultLanguage),
+            action: performTranslation
+        ).translationTask(
+            configuration,
+            action: performTranslation
+        )
+        .onReceive(EventPublisher.shared.commandVEvent) {
+            print("commandVEvent")
+            pasteFromClipboard()
         }
     }
     
+    func performTranslation(session: TranslationSession) async {
+        do {
+            print("mainActor \(sourceText)")
+            let response = try await session.translate(sourceText)
+            await MainActor.run {
+                resultText = response.targetText
+                errorMessage = nil
+            }
+        } catch {
+            let errorMessage = "Translation error: \(error.localizedDescription)"
+            print(errorMessage)
+            await MainActor.run {
+                self.errorMessage = errorMessage
+            }
+        }
+    }
+
+    private func triggerTranslation() {
+        guard configuration == nil else {
+            configuration?.source = Locale.Language(identifier: sourceLanguage)
+            configuration?.target = Locale.Language(identifier: resultLanguage)
+            configuration?.invalidate()
+            return
+        }
+        // Let the framework automatically determine the language pairing.
+        configuration = TranslationSession.Configuration(
+            source: Locale.Language(identifier: sourceLanguage),
+            target: Locale.Language(identifier: resultLanguage)
+        )
+    }
+
     private func pasteFromClipboard() {
         #if canImport(UIKit)
         if let clipboardString = UIPasteboard.general.string {
             sourceText = clipboardString
             sourceImage = nil
+            triggerTranslation()
         } else if let clipboardImage = UIPasteboard.general.image {
             sourceImage = clipboardImage
             sourceText = ""
@@ -132,12 +158,14 @@ struct ContentView: View {
         if let clipboardString = pasteboard.string(forType: .string) {
             sourceText = clipboardString
             sourceImage = nil
+            triggerTranslation()
         } else if let clipboardImage = pasteboard.data(forType: .tiff), let image = NSImage(data: clipboardImage) {
             sourceImage = image
             sourceText = ""
             recognizeTextInImage(image: image) // NSImage to CGImage conversion needed
         }
         #endif
+        
     }
     
     private func recognizeTextInImage(image: PlatformImage) {
@@ -157,6 +185,7 @@ struct ContentView: View {
             
             DispatchQueue.main.async {
                 self.sourceText = recognizedStrings.joined(separator: "\n")
+                triggerTranslation()
             }
         }
         
@@ -168,18 +197,6 @@ struct ContentView: View {
         }
     }
     
-    private func languageCode(for language: String) -> String {
-        switch language {
-        case "영어": return "en"
-        case "일본어": return "ja"
-        case "중국어": return "zh"
-        case "한국어": return "ko"
-        case "스페인어": return "es"
-        case "프랑스어": return "fr"
-        default: return "en"
-        }
-    }
-
     private func addItem() {
         withAnimation {
             let newItem = Item(timestamp: Date())
