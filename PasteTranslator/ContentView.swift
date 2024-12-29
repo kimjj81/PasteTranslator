@@ -64,7 +64,7 @@ struct ContentView: View {
                             #endif
                         } else {
                             TextView(text: sourceText)
-                                .frame(minHeight: 200)
+                                .frame(minHeight: 100)
                                 .background(KeyPressHandler(key: "v", modifiers: [.command]) {
                                     pasteFromClipboard()
                                 })
@@ -83,17 +83,9 @@ struct ContentView: View {
                     }
                     .pickerStyle(MenuPickerStyle())
                     TextView(text: resultText)
-                        .frame(minHeight: 200)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.gray, lineWidth: 1)
-                        )
+                        .frame(minHeight: 100)
                 }
                 .padding()
-//            } detail: {
-//                Text("Select an item")
-//            }
-            
             Text(errorMessage ?? "No errors")
                 .foregroundColor(errorMessage != nil ? .red : .gray)
                 .padding()
@@ -204,8 +196,7 @@ struct ContentView: View {
     
     private func addItem() {
         withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
+            
         }
     }
 
@@ -283,10 +274,11 @@ struct TextView: PlatformViewRepresentable {
     #if canImport(UIKit)
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
-        textView.isEditable = false // 편집 불가능하게 설정
-        textView.isSelectable = true // 선택 가능하게 설정
+        textView.isEditable = false
+        textView.isSelectable = true
         textView.backgroundColor = .clear
         textView.font = UIFont.systemFont(ofSize: 17)
+        textView.isScrollEnabled = true
         return textView
     }
 
@@ -294,17 +286,33 @@ struct TextView: PlatformViewRepresentable {
         uiView.text = text
     }
     #elseif canImport(AppKit)
-    func makeNSView(context: Context) -> NSTextView {
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSScrollView()
         let textView = NSTextView()
-        textView.isEditable = false // 편집 불가능하게 설정
-        textView.isSelectable = true // 선택 가능하게 설정
+        textView.isEditable = false
+        textView.isSelectable = true
         textView.backgroundColor = .clear
-        textView.font = NSFont.systemFont(ofSize: 17)
-        return textView
+        textView.font = NSFont.systemFont(ofSize: 11)
+        textView.textColor = .black
+        
+        // textView가 scrollView의 너비에 맞게 자동으로 조정되도록 설정
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        
+        scrollView.documentView = textView
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        return scrollView
     }
 
-    func updateNSView(_ nsView: NSTextView, context: Context) {
-        nsView.string = text
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        if let textView = nsView.documentView as? NSTextView {
+            textView.string = text
+            print("updateNSView \(text)")
+            // scrollView의 너비에 맞게 textView 크기 업데이트
+            textView.frame.size.width = nsView.contentSize.width
+        }
     }
     #endif
 }
