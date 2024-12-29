@@ -104,7 +104,10 @@ struct ContentView: View {
         ).translationTask(
             configuration,
             action: performTranslation
-        )
+        ).background(KeyPressHandler(key: "v", modifiers: [.command]) {
+            print("cmd+p")
+            pasteFromClipboard()
+        })
         .onReceive(EventPublisher.shared.commandVEvent) {
             print("commandVEvent")
             pasteFromClipboard()
@@ -113,7 +116,7 @@ struct ContentView: View {
     
     func performTranslation(session: TranslationSession) async {
         do {
-            print("mainActor \(sourceText)")
+            errorMessage = "Translating..."
             let response = try await session.translate(sourceText)
             await MainActor.run {
                 resultText = response.targetText
@@ -143,6 +146,7 @@ struct ContentView: View {
     }
 
     private func pasteFromClipboard() {
+        errorMessage = "Pasting..."
         #if canImport(UIKit)
         if let clipboardString = UIPasteboard.general.string {
             sourceText = clipboardString
@@ -169,6 +173,7 @@ struct ContentView: View {
     }
     
     private func recognizeTextInImage(image: PlatformImage) {
+        errorMessage = "Recognizing..."
         #if canImport(UIKit)
         guard let cgImage = image.cgImage else { return }
         #elseif canImport(AppKit)
